@@ -29,7 +29,6 @@ Sub HowManyEmails()
     Dim oFinalItems As Outlook.Items
     Dim oAppt As Outlook.AppointmentItem
 
-    
     'Turn on Debugging
     Debugging = False
     
@@ -97,13 +96,11 @@ Sub HowManyEmails()
         Set oFinalItems = oItemsInDateRange.Restrict(strSubfilter)
         oFinalItems.Sort "[Start]"
         
-        
         If Debugging = True Then
             MsgBox "There are: " & oItemsInDateRange.Count & " appointments in date range", vbInformation, "Debugging"
             MsgBox "There are " & oFinalItems.Count & " appointments with our subject", vbInformation, "Debugging"
             If MsgBox("I'm here", vbOKCancel, "Debugging") = vbCancel Then Exit Sub
         End If
-                
                 
         If oFinalItems.Count < 1 Then
             ApptStatus = False
@@ -119,8 +116,6 @@ Sub HowManyEmails()
         If ApptStatus = True Then
             Exit Sub
         End If
-           
-        
         
         'Find next available 30 minute time slot during working hours
         'Create 30 minute appointment to review email
@@ -210,7 +205,6 @@ End If
     
 End Sub
 
-
 Function DateSpan(colItems As Outlook.Items, _
             dteStart As Date, dteEnd As Date) _
             As Outlook.Items
@@ -253,8 +247,6 @@ Sub TestDateSpan()
     Set colSpanItems = Nothing
     Set colCal = Nothing
 End Sub
-
-
 
 ' VBA Script that gets list of Outlook Tasks
 ' Use Tools->Macro->Security to allow Macros to run, then restart Outlook
@@ -340,7 +332,6 @@ Public Sub GetListOfTasks()
         End If
     Next
     
-    
     Call CreateReportAsEmail("List of Tasks", Report)
     
 Exiting:
@@ -382,7 +373,6 @@ Public Sub CreateReportAsEmail(Title As String, Report As String)
     
     mail.Save
     mail.Display
-    
     
 Exiting:
         Set Session = Nothing
