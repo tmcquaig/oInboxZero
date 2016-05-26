@@ -1,0 +1,394 @@
+Option Explicit
+
+Private Sub Application_NewMail()
+     Call HowManyEmails
+End Sub
+
+Sub HowManyEmails()
+    Dim objOutlook As Object, objnSpace As Object, objFolder As Object
+    Dim EmailCount As Integer
+    Dim ApptStatus As Boolean, NeedToClean As Boolean
+    Dim oCurrentUser As ExchangeUser
+    Dim FreeBusy As String
+    Dim BusySlot As Long, i As Long
+    Dim FreeTime As Date, DateBusySlot As Date, TheDateToUse As Date
+    Dim Debugging As Boolean
+    Dim myItem As Object
+    Dim mySubject As String
+    Dim myStart As Date
+    Dim myEnd As Date
+    Dim strSubfilter As String, strDateFilter As String
+    Dim objTheRightAppointment As Outlook.Items
+    Dim objInRangeAppointments As Outlook.Items
+    Dim countofoitems As Integer
+    'dim objAppointments As Object
+    
+    Dim oCalendar As Outlook.Folder
+    Dim oItems As Outlook.Items
+    Dim oItemsInDateRange As Outlook.Items
+    Dim oFinalItems As Outlook.Items
+    Dim oAppt As Outlook.AppointmentItem
+
+    
+    'Turn on Debugging
+    Debugging = False
+    
+    'How long of an appoitment in minutes do you need to fix your inbox?
+    Const SlotLength = 30
+    
+    'Connect to MAPI and get into our inbox
+    Set objOutlook = CreateObject("Outlook.Application")
+    Set objnSpace = objOutlook.GetNamespace("MAPI")
+    On Error Resume Next
+    If Debugging = True Then
+        MsgBox "Connected to Outlook", vbInformation, "Debugging"
+    End If
+    Set objFolder = objnSpace.Folders("CHANGEME").Folders("Inbox")
+    If Debugging = True Then
+        MsgBox "Found Folders", vbInformation, "Debugging"
+    End If
+    
+    If Err.Number <> 0 Then
+        Err.Clear
+        MsgBox "No such folder."
+    End If
+  
+    'How many emails do we have?
+    EmailCount = objFolder.Items.Count
+    If Debugging = True Then
+        MsgBox "Counted emails as " & EmailCount, vbInformation, "Debugging"
+    End If
+    'If more than 20 emails then do something about it
+    If EmailCount > 20 Then
+        NeedToClean = True
+        If Debugging = True Then
+            MsgBox "Need to Clean is " & NeedToClean, vbInformation, "Debugging"
+        End If
+        
+        'If no appoitment to clean then create one. Need to add code to find appoitment named "Review Email Inbox Zero" and if found set ApptStatus to True
+        If Debugging = True Then
+            MsgBox "Trying to find an existing appointment.", vbInformation, "Debugging"
+        End If
+        
+        'Looking for existing appointment between now and 30 days
+        'Changed mystart to date but would like now.
+        myStart = Now
+        myEnd = DateAdd("d", 60, myStart)
+        strDateFilter = "[Start] >= '" & Format$(myStart, "mm/dd/yyyy hh:mm AMPM") & "' AND [End] <= '" & Format$(myEnd, "mm/dd/yyyy hh:mm AMPM") & "'"
+        'strfilter = "[Subject] = '" & mySubject & "' AND [Start] <= '" & myEnd & "' AND [END] >= '" & MyStart & "'"
+        'strSubfilter = "[Subject] = '" & mySubject & "'"
+        'Construct filter for Subject containing 'team'
+        Const PropTag  As String = "http://schemas.microsoft.com/mapi/proptag/"
+        strSubfilter = "@SQL=" & Chr(34) & PropTag & "0x0037001E" & Chr(34) & " like '%Review Email Inbox Zero%'"
+
+        If Debugging = True Then
+            MsgBox "Start: " & myStart, vbInformation, "Debugging"
+            MsgBox "End: " & myEnd, vbInformation, "Debugging"
+            MsgBox "The Date Filter is: " & strDateFilter, vbInformation, "Debugging"
+            MsgBox "The Subject Filter is: " & strSubfilter, vbInformation, "Debugging"
+        End If
+
+        
+        Set oCalendar = Application.Session.GetDefaultFolder(olFolderCalendar)
+        Set oItems = oCalendar.Items
+        oItems.IncludeRecurrences = False
+        oItems.Sort "[Start]"
+        Set oItemsInDateRange = oItems.Restrict(strDateFilter)
+        Set oFinalItems = oItemsInDateRange.Restrict(strSubfilter)
+        oFinalItems.Sort "[Start]"
+        
+        
+        If Debugging = True Then
+            MsgBox "There are: " & oItemsInDateRange.Count & " appointments in date range", vbInformation, "Debugging"
+            MsgBox "There are " & oFinalItems.Count & " appointments with our subject", vbInformation, "Debugging"
+            If MsgBox("I'm here", vbOKCancel, "Debugging") = vbCancel Then Exit Sub
+        End If
+                
+                
+        If oFinalItems.Count < 1 Then
+            ApptStatus = False
+        Else
+            ApptStatus = True
+        End If
+        
+        If Debugging = True Then
+            MsgBox "Appoitment Status is " & ApptStatus & " Count is " & oFinalItems.Count, vbInformation, "Debugging"
+        End If
+        
+        'If we have an appointment to clean we need to get out.
+        If ApptStatus = True Then
+            Exit Sub
+        End If
+           
+        
+        
+        'Find next available 30 minute time slot during working hours
+        'Create 30 minute appointment to review email
+        'Get ExchangeUser for CurrentUser
+        If Debugging = True Then
+            MsgBox "About to check free busy for " & oCurrentUser.Name, vbInformation, "Debugging"
+        End If
+        If Application.Session.CurrentUser.AddressEntry.Type = "EX" Then
+            Set oCurrentUser = Application.Session.CurrentUser.AddressEntry.GetExchangeUser
+            FreeBusy = oCurrentUser.GetFreeBusy(Now, SlotLength)
+            If Debugging = True Then
+                MsgBox "Freebusy looks like: " & FreeBusy, vbInformation, "Debugging"
+                MsgBox " i looks like: " & i, vbInformation, "Debugging"
+            End If
+            
+            For i = 1 To Len(FreeBusy)
+                If CLng(Mid(FreeBusy, i, 1)) = 0 Then
+                    'get the number of minutes into the day for free interval
+                    BusySlot = (i - 1) * SlotLength
+   
+                    'get an actual date/time
+                    DateBusySlot = DateAdd("n", BusySlot, Date)
+
+                    'To refine this function, substitute actual
+                    'workdays and working hours in date/time comparison
+                    'If it is in working hours and not a saturday or a sunday then we are done finding our free slot.
+                    If DateBusySlot > Now() And _
+                        TimeValue(DateBusySlot) >= TimeValue(#8:00:00 AM#) And _
+                        TimeValue(DateBusySlot) < TimeValue(#5:00:00 PM#) And _
+                        Not (Weekday(DateBusySlot) = vbSaturday Or Weekday(DateBusySlot) = vbSunday) Then
+                        Exit For
+                        TheDateToUse = Format$(DateBusySlot, "\#mm/d/yyyy hh:m AMPM\#")
+                        If Debugging = True Then
+                            MsgBox "DateBusySlot selected was: " & DateBusySlot, vbInformation, "Debugging"
+                            MsgBox oCurrentUser.Name & " first open interval:" & vbCrLf & TheDateToUse, vbInformation, "Debugging"
+                        End If
+                    End If
+                End If
+            Next
+            If Debugging = True Then
+                MsgBox "Creating Appoitment for " & DateBusySlot & " which should be formated correctly.", vbInformation, "Debugging"
+            End If
+            
+            Set myItem = Application.CreateItem(olAppointmentItem)
+            'myItem.MeetingStatus = olAppointment
+            myItem.Subject = "Review Email Inbox Zero"
+            myItem.Location = "Outlook"
+            'myItem.Start = Format$(DateBusySlot, "\#mm/d/yyyy hh:m AMPM\#")
+            myItem.Start = DateBusySlot
+            myItem.Duration = 30
+            'myItem.Display
+            'Enable Saving the appoitment.
+            myItem.Save
+        End If
+        ApptStatus = True
+        'If EmailCount below 20 then no appoitments no flags
+        If EmailCount < 20 Then
+            NeedToClean = False
+            ApptStatus = False
+        End If
+    End If
+    'MsgBox "Number of emails in the folder: " & EmailCount, , "Inbox count"
+    If Debugging = True Then
+        MsgBox "I had an error level of " & Err.Number, vbInformation
+    End If
+    
+    'Clean up
+    Set myItem = Nothing
+    Set objFolder = Nothing
+    Set objnSpace = Nothing
+    Set objOutlook = Nothing
+    Set objOutlook = Nothing
+    Set objFolder = Nothing
+    Set oCurrentUser = Nothing
+    
+End Sub
+
+Sub CalendarManagement()
+
+Dim Debugging As Boolean
+
+Debugging = False
+
+If Debugging = True Then
+    MsgBox "I had an error level of " & Err.Number, vbInformation
+End If
+    
+End Sub
+
+
+Function DateSpan(colItems As Outlook.Items, _
+            dteStart As Date, dteEnd As Date) _
+            As Outlook.Items
+    Dim colSpanItems As Outlook.Items
+    Dim strfind As String
+    On Error Resume Next
+    colItems.Sort "[Start]"
+    colItems.IncludeRecurrences = True
+    strfind = "[Start] <= " & _
+        Quote(Format(dteEnd, "ddddd") & " 11:59 PM") & _
+        " AND [End] > " & _
+        Quote(Format(dteStart, "ddddd") & " 12:00 AM")
+    'MsgBox strfind
+    Set colSpanItems = colItems.Restrict(strfind)
+    If Err = 0 Then
+        Set DateSpan = colSpanItems
+    End If
+    Set colSpanItems = Nothing
+    End Function
+    
+    Function Quote(MyText)
+        Quote = Chr(34) & MyText & Chr(34)
+    End Function
+      
+Sub TestDateSpan()
+    Dim objOL As Outlook.Application
+    Dim objNS As Outlook.NameSpace
+    Dim colCal As Outlook.Items
+    Dim objAppt As Outlook.AppointmentItem
+    Dim colSpanItems As Outlook.Items
+    On Error Resume Next
+    Set objOL = CreateObject("Outlook.Application")
+    Set objNS = objOL.GetNamespace("MAPI")
+    Set colCal = objNS.GetDefaultFolder(olFolderCalendar).Items.Restrict("[IsRecurring] = TRUE")
+    'Set colSpanItems = DateSpan(colCal, #3/5/2014#, #3/5/2014#)
+    For Each objAppt In colSpanItems
+        MsgBox objAppt.Subject, objAppt.Start, objAppt.End
+    Next
+    Set objAppt = Nothing
+    Set colSpanItems = Nothing
+    Set colCal = Nothing
+End Sub
+
+
+
+' VBA Script that gets list of Outlook Tasks
+' Use Tools->Macro->Security to allow Macros to run, then restart Outlook
+' Run Outlook, Press Alt+F11 to open VBA
+' Programming by Greg Thatcher, http://www.GregThatcher.com
+
+Public Sub GetListOfTasks()
+    'On Error GoTo On_Error
+    On Error Resume Next
+    Dim Session As Outlook.NameSpace
+    Dim Report As String
+    Dim TaskFolder As Outlook.Folder
+    Dim currentItem As Object
+    Dim currentTask As TaskItem
+    Set Session = Application.Session
+    Dim counter As Integer
+    
+    Set TaskFolder = Session.GetDefaultFolder(olFolderTasks)
+    counter = 0
+    For Each currentItem In TaskFolder.Items
+        If counter < 5 Then
+            If (currentItem.Class = olTask) Then
+                Set currentTask = currentItem
+                counter = counter + 1
+                
+                Report = Report & AddToReportIfNotBlank("ConversationTopic", currentTask.ConversationTopic)
+                Report = Report & AddToReportIfNotBlank("ActualWork", currentTask.ActualWork)
+                Report = Report & AddToReportIfNotBlank("AutoResolvedWinner", currentTask.AutoResolvedWinner)
+                Report = Report & AddToReportIfNotBlank("BillingInformation", currentTask.BillingInformation)
+                Report = Report & AddToReportIfNotBlank("Body", currentTask.Body)
+                Report = Report & AddToReportIfNotBlank("CardData", currentTask.CardData)
+                Report = Report & AddToReportIfNotBlank("Categories", currentTask.Categories)
+                Report = Report & AddToReportIfNotBlank("Companies", currentTask.Companies)
+                Report = Report & AddToReportIfNotBlank("Complete", currentTask.Complete)
+                Report = Report & AddToReportIfNotBlank("ContactNames", currentTask.ContactNames)
+                Report = Report & AddToReportIfNotBlank("ConversationIndex", currentTask.ConversationIndex)
+                Report = Report & AddToReportIfNotBlank("CreationTime", currentTask.CreationTime)
+                Report = Report & AddToReportIfNotBlank("DateCompleted", currentTask.DateCompleted)
+                Report = Report & AddToReportIfNotBlank("DelegationState", currentTask.DelegationState)
+                Report = Report & AddToReportIfNotBlank("Delegator", currentTask.Delegator)
+                Report = Report & AddToReportIfNotBlank("DownloadState", currentTask.DownloadState)
+                Report = Report & AddToReportIfNotBlank("DueDate", currentTask.DueDate)
+                Report = Report & AddToReportIfNotBlank("EntryID", currentTask.EntryID)
+                Report = Report & AddToReportIfNotBlank("Importance", currentTask.Importance)
+                Report = Report & AddToReportIfNotBlank("InternetCodepage", currentTask.InternetCodepage) 'May be broken
+                Report = Report & AddToReportIfNotBlank("IsConflict", currentTask.IsConflict)
+                Report = Report & AddToReportIfNotBlank("IsRecurring", currentTask.IsRecurring)
+                Report = Report & AddToReportIfNotBlank("LastModificationTime", currentTask.LastModificationTime)
+                Report = Report & AddToReportIfNotBlank("MarkForDownload", currentTask.MarkForDownload)
+                Report = Report & AddToReportIfNotBlank("MessageClass", currentTask.MessageClass)
+                Report = Report & AddToReportIfNotBlank("Mileage", currentTask.Mileage)
+                Report = Report & AddToReportIfNotBlank("NoAging", currentTask.NoAging)
+                Report = Report & AddToReportIfNotBlank("Ordinal", currentTask.Ordinal)
+                Report = Report & AddToReportIfNotBlank("OutlookInternalVersion", currentTask.OutlookInternalVersion)
+                Report = Report & AddToReportIfNotBlank("OutlookVersion", currentTask.OutlookVersion)
+                Report = Report & AddToReportIfNotBlank("Owner", currentTask.Owner)
+                Report = Report & AddToReportIfNotBlank("Ownership", currentTask.Ownership)
+                Report = Report & AddToReportIfNotBlank("PercentComplete", currentTask.PercentComplete)
+                Report = Report & AddToReportIfNotBlank("ReminderOverrideDefault", currentTask.ReminderOverrideDefault)
+                Report = Report & AddToReportIfNotBlank("ReminderPlaySound", currentTask.ReminderPlaySound)
+                Report = Report & AddToReportIfNotBlank("ReminderSet", currentTask.ReminderSet)
+                Report = Report & AddToReportIfNotBlank("ReminderSoundFile", currentTask.ReminderSoundFile)
+                Report = Report & AddToReportIfNotBlank("ReminderTime", currentTask.ReminderTime)
+                Report = Report & AddToReportIfNotBlank("ResponseState", currentTask.ResponseState)
+                Report = Report & AddToReportIfNotBlank("Role", currentTask.Role)
+                Report = Report & AddToReportIfNotBlank("Saved", currentTask.Saved)
+                Report = Report & AddToReportIfNotBlank("SchedulePlusPriority", currentTask.SchedulePlusPriority)
+                Report = Report & AddToReportIfNotBlank("SendUsingAccount", currentTask.SendUsingAccount)
+                Report = Report & AddToReportIfNotBlank("Sensitivity", currentTask.Sensitivity)
+                Report = Report & AddToReportIfNotBlank("Size", currentTask.Size)
+                Report = Report & AddToReportIfNotBlank("StartDate", currentTask.StartDate)
+                Report = Report & AddToReportIfNotBlank("Status", currentTask.Status)
+                Report = Report & AddToReportIfNotBlank("StatusOnCompletionRecipients", currentTask.StatusOnCompletionRecipients)
+                Report = Report & AddToReportIfNotBlank("StatusUpdateRecipients", currentTask.StatusUpdateRecipients)
+                Report = Report & AddToReportIfNotBlank("Subject", currentTask.Subject)
+                Report = Report & AddToReportIfNotBlank("TeamTask", currentTask.TeamTask)
+                Report = Report & AddToReportIfNotBlank("ToDoTaskOrdinal", currentTask.ToDoTaskOrdinal)
+                Report = Report & AddToReportIfNotBlank("TotalWork", currentTask.TotalWork)
+                Report = Report & AddToReportIfNotBlank("UnRead", currentTask.UnRead)
+                
+                Report = Report & vbCrLf & vbCrLf
+            End If
+        End If
+    Next
+    
+    
+    Call CreateReportAsEmail("List of Tasks", Report)
+    
+Exiting:
+        Exit Sub
+On_Error:
+    MsgBox "error=" & Err.Number & " " & Err.Description
+    Resume Exiting
+    
+End Sub
+
+Private Function AddToReportIfNotBlank(FieldName As String, FieldValue As String)
+    AddToReportIfNotBlank = ""
+    If (FieldValue <> "") Then
+        AddToReportIfNotBlank = FieldName & " : " & FieldValue & vbCrLf
+    End If
+    
+End Function
+
+' VBA SubRoutine which displays a report inside an email
+' Programming by Greg Thatcher, http://www.GregThatcher.com
+Public Sub CreateReportAsEmail(Title As String, Report As String)
+    On Error GoTo On_Error
+    
+    Dim Session As Outlook.NameSpace
+    Dim mail As MailItem
+    Dim MyAddress As AddressEntry
+    Dim Inbox As Outlook.Folder
+    
+    Set Session = Application.Session
+    Set Inbox = Session.GetDefaultFolder(olFolderInbox)
+    Set mail = Inbox.Items.Add("IPM.Mail")
+    
+    Set MyAddress = Session.CurrentUser.AddressEntry
+    mail.Recipients.Add (MyAddress.Address)
+    mail.Recipients.ResolveAll
+    
+    mail.Subject = Title
+    mail.Body = Report
+    
+    mail.Save
+    mail.Display
+    
+    
+Exiting:
+        Set Session = Nothing
+        Exit Sub
+On_Error:
+    MsgBox "error=" & Err.Number & " " & Err.Description
+    Resume Exiting
+
+End Sub
