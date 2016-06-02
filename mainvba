@@ -44,7 +44,7 @@ Sub HowManyEmails()
         MsgBox "Connected to Outlook", vbInformation, "Debugging"
     End If
     'Set the email address and the default folder location you have your email go to.
-    Set objFolder = objnSpace.Folders("Bill.Gates@Microsoft.com").Folders("Inbox")
+    Set objFolder = objnSpace.Folders("Billy.Gates@Microsoft.com").Folders("Inbox")
     If Debugging = True Then
         MsgBox "Found Folders", vbInformation, "Debugging"
     End If
